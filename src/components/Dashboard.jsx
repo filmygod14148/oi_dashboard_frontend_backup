@@ -1,0 +1,294 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import SnapshotTable from './SnapshotTable';
+
+const Dashboard = () => {
+    const [symbol, setSymbol] = useState('NIFTY');
+    const [currentData, setCurrentData] = useState(null);
+    const [history, setHistory] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const [liveSpotPrice, setLiveSpotPrice] = useState('N/A'); // Live spot price that updates every 5s
+
+    const [refreshInterval] = useState(5000); // 5 seconds
+    const [timeLeft, setTimeLeft] = useState(5); // Countdown timer
+    const [previousData, setPreviousData] = useState(null); // Store previous fetch for comparison
+    const [strikeCount, setStrikeCount] = useState(5); // Default 5 strikes
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const d = new Date();
+        const offset = d.getTimezoneOffset();
+        const local = new Date(d.getTime() - (offset * 60 * 1000));
+        return local.toISOString().split('T')[0];
+    }); // Default: Today (Local)
+    const [timeFilter, setTimeFilter] = useState('all'); // Default: All Time
+    const [currentTime, setCurrentTime] = useState(new Date()); // Clock state
+    const [showClock, setShowClock] = useState(true); // Toggle clock
+
+
+    const fetchData = async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
+        try {
+            // 1. Fetch only latest first to check for changes
+            const latestRes = await axios.get(`/api/latest?symbol=${symbol}`);
+            const latest = latestRes.data;
+
+            if (!latest) {
+                if (!isBackground) setLoading(false);
+                return;
+            }
+
+            // Check if data has changed (compare with current loaded data)
+            // We use _id comparison if available, or timestamp
+            const isNewData = !previousData ||
+                (latest._id && previousData._id !== latest._id) ||
+                (latest.timestamp !== previousData.timestamp);
+
+            if (isNewData) {
+                console.log('Data updated - changes detected. Fetching full history...');
+
+                // 2. Only fetch full history if we have new data
+                const histRes = await axios.get(`/api/history?symbol=${symbol}&limit=all`);
+
+                if (histRes.data && Array.isArray(histRes.data)) {
+                    setHistory(histRes.data);
+                    setCurrentData(latest);
+
+                    const updateDate = new Date(latest.timestamp);
+                    if (!isNaN(updateDate.getTime())) {
+                        setLastUpdated(updateDate.toLocaleTimeString());
+                    } else {
+                        setLastUpdated('Invalid Date');
+                    }
+                    setPreviousData(latest);
+                }
+            } else {
+                console.log('No changes detected - skipping update');
+            }
+        } catch (error) {
+            console.error('Error fetching data', error);
+        }
+        if (!isBackground) setLoading(false);
+    };
+
+    // Initial fetch on mount or symbol change
+    useEffect(() => {
+        fetchData(false);
+    }, [symbol]);
+
+    // Poll every 5 seconds
+    // Countdown and Auto-Refresh Effect
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTimeLeft((prev) => {
+                if (prev <= 1) {
+                    fetchData(true);
+                    return 5; // Reset to 5 seconds
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [symbol, previousData]);
+
+    // Clock Effect
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // Live Spot Price Refresh - Updates every 5 seconds
+    useEffect(() => {
+        const fetchSpotPrice = async () => {
+            try {
+                const latestRes = await axios.get(`/api/latest?symbol=${symbol}`);
+                const latest = latestRes.data;
+                if (latest?.data?.records?.underlyingValue) {
+                    setLiveSpotPrice(latest.data.records.underlyingValue);
+                }
+            } catch (error) {
+                console.error('Error fetching spot price', error);
+            }
+        };
+
+        // Fetch immediately on mount
+        fetchSpotPrice();
+
+        // Then fetch every 5 seconds
+        const interval = setInterval(fetchSpotPrice, 5000);
+
+        return () => clearInterval(interval);
+    }, [symbol]);
+
+    // Derived values - Always use the latest snapshot for spot price
+    const latestSnapshot = history.length > 0 ? history[history.length - 1] : currentData;
+    const totalCE = currentData?.data?.filtered?.CE?.totOI || 0;
+    const totalPE = currentData?.data?.filtered?.PE?.totOI || 0;
+    let pcr = "0.00";
+    if (totalCE > 0 && !isNaN(totalPE)) {
+        pcr = (totalPE / totalCE).toFixed(2);
+    }
+    const spotPrice = latestSnapshot?.data?.records?.underlyingValue || 'N/A';
+
+    // Generate last 7 days for dropdown
+    const availableDates = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        return d.toISOString().split('T')[0];
+    });
+
+    // Prepare data for the chart
+    const rawChartData = (history || [])
+        .map(h => {
+            const timeValue = new Date(h.timestamp).getTime();
+            const time = Math.floor(timeValue / 1000);
+            return {
+                time: isNaN(time) ? null : time,
+                value: h.data?.records?.underlyingValue || 0,
+            };
+        })
+        .filter(d => d.time !== null && d.value > 0)
+        .sort((a, b) => a.time - b.time);
+
+    // Deduplicate timestamps (lightweight-charts requires strictly increasing time)
+    const chartData = [];
+    if (rawChartData.length > 0) {
+        chartData.push(rawChartData[0]);
+        for (let i = 1; i < rawChartData.length; i++) {
+            if (rawChartData[i].time > rawChartData[i - 1].time) {
+                chartData.push(rawChartData[i]);
+            }
+        }
+    }
+
+    return (
+        <div className="p-4 max-w-[1920px] mx-auto relative bg-[#f8fafc] min-h-screen">
+            {/* Floating Time Display */}
+            {showClock && (
+                <div className="fixed top-4 left-4 bg-black/80 text-white px-3 py-1 rounded shadow-lg z-50 text-sm font-mono tracking-wider border border-gray-600">
+                    {currentTime.toLocaleTimeString()}
+                </div>
+            )}
+
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-3xl font-bold text-gray-800">OI Dashboard</h1>
+                <div className="flex items-center gap-4">
+                    <span className="text-sm text-gray-500 flex flex-col items-end">
+                        <span>Updated: {lastUpdated || 'Never'}</span>
+                        {currentData?.data?.nseTimestamp && (
+                            <span className="text-xs text-blue-600 font-semibold">NSE: {currentData.data.nseTimestamp}</span>
+                        )}
+                    </span>
+
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none bg-white px-3 py-2 rounded border shadow-sm hover:bg-gray-50">
+                        <input
+                            type="checkbox"
+                            checked={showClock}
+                            onChange={(e) => setShowClock(e.target.checked)}
+                            className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        Clock
+                    </label>
+
+                    <select
+                        value={symbol}
+                        onChange={(e) => setSymbol(e.target.value)}
+                        className="p-2 border rounded shadow-sm bg-white"
+                    >
+                        <option value="NIFTY">NIFTY 50</option>
+                        <option value="BANKNIFTY">BANKNIFTY</option>
+                        <option value="FINNIFTY">FINNIFTY</option>
+                    </select>
+                    <button
+                        onClick={() => { fetchData(); setTimeLeft(5); }}
+                        disabled={loading}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 min-w-[100px]"
+                    >
+                        {loading ? 'Refreshing...' : `Refresh (${timeLeft}s)`}
+                    </button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+                    <h3 className="text-gray-500 text-sm">Spot Price</h3>
+                    <p className="text-2xl font-bold">{liveSpotPrice}</p>
+                </div>
+                <div className="bg-white p-4 rounded shadow border-l-4 border-green-500">
+                    <h3 className="text-gray-500 text-sm">PCR</h3>
+                    <p className="text-2xl font-bold">{pcr}</p>
+                </div>
+                <div className="bg-white p-4 rounded shadow border-l-4 border-red-500">
+                    <h3 className="text-gray-500 text-sm">Total CE OI</h3>
+                    <p className="text-2xl font-bold text-red-600">{totalCE.toLocaleString()}</p>
+                </div>
+                <div className="bg-white p-4 rounded shadow border-l-4 border-teal-500">
+                    <h3 className="text-gray-500 text-sm">Total PE OI</h3>
+                    <p className="text-2xl font-bold text-teal-600">{totalPE.toLocaleString()}</p>
+                </div>
+            </div>
+
+            {/* Dashboard Container - Two Panels */}
+            <div className="flex flex-col lg:flex-row gap-6 mt-6">
+
+                {/* Left Panel - Table and Data */}
+                <div className="w-full flex flex-col gap-6">
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex-grow">
+                        <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
+                            <h3 className="font-bold text-lg text-gray-800">Snapshot History</h3>
+                            <div className="flex flex-wrap gap-3 items-center">
+                                <div className="flex items-center gap-2 text-sm bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                    <label className="text-gray-500 font-medium">Strikes:</label>
+                                    <select
+                                        className="border-none bg-transparent font-bold text-gray-700 focus:ring-0"
+                                        value={strikeCount}
+                                        onChange={(e) => setStrikeCount(Number(e.target.value))}
+                                    >
+                                        <option value={3}>3</option>
+                                        <option value={5}>5</option>
+                                        <option value={7}>7</option>
+                                        <option value={9}>9</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                    <label className="text-gray-500 font-medium">Date:</label>
+                                    <select
+                                        className="border-none bg-transparent font-bold text-gray-700 focus:ring-0"
+                                        value={selectedDate}
+                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                    >
+                                        {availableDates.map(date => (
+                                            <option key={date} value={date}>{date}</option>
+                                        ))}
+                                        <option value="">All Time</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                    <label className="text-gray-500 font-medium">Time:</label>
+                                    <select
+                                        className="border-none bg-transparent font-bold text-gray-700 focus:ring-0"
+                                        value={timeFilter}
+                                        onChange={(e) => setTimeFilter(e.target.value)}
+                                    >
+                                        <option value="1h">Last 1 Hour</option>
+                                        <option value="3h">Last 3 Hours</option>
+                                        <option value="6h">Last 6 Hours</option>
+                                        <option value="all">All Time</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <SnapshotTable historyData={history} selectedDate={selectedDate} timeFilter={timeFilter} strikeCount={strikeCount} />
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    );
+};
+
+export default Dashboard;
