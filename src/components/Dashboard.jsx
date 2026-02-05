@@ -28,9 +28,13 @@ const Dashboard = () => {
     const fetchData = async (isBackground = false) => {
         if (!isBackground) setLoading(true);
         try {
+            const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+            console.log(`📡 Fetching latest from: ${API_BASE_URL}/api/latest?symbol=${symbol}`);
+
             // 1. Fetch only latest first to check for changes
-            const latestRes = await axios.get(`/api/latest?symbol=${symbol}`);
+            const latestRes = await axios.get(`${API_BASE_URL}/api/latest?symbol=${symbol}`);
             const latest = latestRes.data;
+            console.log('✅ Latest data received:', latest ? 'Yes' : 'No');
 
             if (!latest) {
                 if (!isBackground) setLoading(false);
@@ -47,7 +51,7 @@ const Dashboard = () => {
                 console.log('Data updated - changes detected. Fetching full history...');
 
                 // 2. Only fetch full history if we have new data
-                const histRes = await axios.get(`/api/history?symbol=${symbol}&limit=all`);
+                const histRes = await axios.get(`${API_BASE_URL}/api/history?symbol=${symbol}&limit=all`);
 
                 if (histRes.data && Array.isArray(histRes.data)) {
                     setHistory(histRes.data);
@@ -103,7 +107,8 @@ const Dashboard = () => {
     useEffect(() => {
         const fetchSpotPrice = async () => {
             try {
-                const latestRes = await axios.get(`/api/latest?symbol=${symbol}`);
+                const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+                const latestRes = await axios.get(`${API_BASE_URL}/api/latest?symbol=${symbol}`);
                 const latest = latestRes.data;
                 if (latest?.data?.records?.underlyingValue) {
                     setLiveSpotPrice(latest.data.records.underlyingValue);
