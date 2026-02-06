@@ -29,44 +29,48 @@ const Dashboard = () => {
         if (!isBackground) setLoading(true);
         try {
             const API_BASE_URL = import.meta.env.VITE_API_URL || '';
-            console.log(`📡 Fetching latest from: ${API_BASE_URL}/api/latest?symbol=${symbol}`);
 
-            // 1. Fetch only latest first to check for changes
+            // 1. Fetch only latest
             const latestRes = await axios.get(`${API_BASE_URL}/api/latest?symbol=${symbol}`);
             const latest = latestRes.data;
-            console.log('✅ Latest data received:', latest ? 'Yes' : 'No');
 
             if (!latest) {
                 if (!isBackground) setLoading(false);
                 return;
             }
 
-            // Check if data has changed (compare with current loaded data)
-            // We use _id comparison if available, or timestamp
+            // Check if data has changed
             const isNewData = !previousData ||
                 (latest._id && previousData._id !== latest._id) ||
                 (latest.timestamp !== previousData.timestamp);
 
             if (isNewData) {
-                console.log('Data updated - changes detected. Fetching full history...');
+                setCurrentData(latest);
+                const updateDate = new Date(latest.timestamp);
+                setLastUpdated(!isNaN(updateDate.getTime()) ? updateDate.toLocaleTimeString() : 'Invalid Date');
+                setPreviousData(latest);
 
-                // 2. Only fetch full history if we have new data
-                const histRes = await axios.get(`${API_BASE_URL}/api/history?symbol=${symbol}&limit=all`);
-
-                if (histRes.data && Array.isArray(histRes.data)) {
-                    setHistory(histRes.data);
-                    setCurrentData(latest);
-
-                    const updateDate = new Date(latest.timestamp);
-                    if (!isNaN(updateDate.getTime())) {
-                        setLastUpdated(updateDate.toLocaleTimeString());
-                    } else {
-                        setLastUpdated('Invalid Date');
+                // 2. Fetch history ONLY if we don't have it yet, or if it's a manual refresh
+                if (history.length === 0 || !isBackground) {
+                    console.log('Fetching initial history...');
+                    const histRes = await axios.get(`${API_BASE_URL}/api/history?symbol=${symbol}&limit=100`);
+                    if (histRes.data && Array.isArray(histRes.data)) {
+                        setHistory(histRes.data);
                     }
-                    setPreviousData(latest);
+                } else {
+                    // Incremental update: Append the latest data point to history
+                    // but first check if it's already there to avoid duplicates
+                    setHistory(prev => {
+                        const exists = prev.some(h => h._id === latest._id || h.timestamp === latest.timestamp);
+                        if (exists) return prev;
+
+                        const newHistory = [...prev, latest];
+                        // Keep a reasonable window of history (e.g., last 100 points)
+                        return newHistory.slice(-100);
+                    });
                 }
             } else {
-                console.log('No changes detected - skipping update');
+                console.log('No changes detected');
             }
         } catch (error) {
             console.error('Error fetching data', error);
