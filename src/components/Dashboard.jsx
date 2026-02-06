@@ -20,7 +20,7 @@ const Dashboard = () => {
         const local = new Date(d.getTime() - (offset * 60 * 1000));
         return local.toISOString().split('T')[0];
     }); // Default: Today (Local)
-    const [timeFilter, setTimeFilter] = useState('all'); // Default: All Time
+    const [timeFilter, setTimeFilter] = useState('1h'); // Default: 1 Hour
     const [currentTime, setCurrentTime] = useState(new Date()); // Clock state
     const [showClock, setShowClock] = useState(true); // Toggle clock
 
@@ -52,8 +52,8 @@ const Dashboard = () => {
 
                 // 2. Fetch history ONLY if we don't have it yet, or if it's a manual refresh
                 if (history.length === 0 || !isBackground) {
-                    console.log('Fetching initial history...');
-                    const histRes = await axios.get(`${API_BASE_URL}/api/history?symbol=${symbol}&limit=100`);
+                    console.log('Fetching initial history (limit 25, trimmed)...');
+                    const histRes = await axios.get(`${API_BASE_URL}/api/history?symbol=${symbol}&limit=25&trim=true`);
                     if (histRes.data && Array.isArray(histRes.data)) {
                         setHistory(histRes.data);
                     }
