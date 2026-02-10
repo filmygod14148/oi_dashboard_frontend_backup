@@ -60,6 +60,9 @@ const Dashboard = () => {
 
                     if (!forceFullFetch) {
                         historyParams += '&limit=25&trim=true';
+                    } else {
+                        // Explicitly request a large limit to override backend defaults
+                        historyParams += '&limit=5000';
                     }
 
                     // Add date filter if a specific date is selected
