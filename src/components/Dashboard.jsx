@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SnapshotTable from './SnapshotTable';
-import HistoryChart from './HistoryChart';
+import HistoryTable from './HistoryTable';
 
 const Dashboard = () => {
     const [symbol, setSymbol] = useState('NIFTY');
@@ -323,8 +323,8 @@ const Dashboard = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="mb-6 h-[400px]">
-                            <HistoryChart historyData={history} />
+                        <div className="mb-6">
+                            <HistoryTable historyData={history} />
                         </div>
                         <div className="overflow-x-auto">
                             <SnapshotTable historyData={history} selectedDate={selectedDate} timeFilter={timeFilter} strikeCount={strikeCount} />
