@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SnapshotTable from './SnapshotTable';
 import HistoryTable from './HistoryTable';
-import HistoryChart from './HistoryChart';
 
 const Dashboard = () => {
     const [symbol, setSymbol] = useState('NIFTY');
@@ -337,9 +336,6 @@ const Dashboard = () => {
                         </div>
                         {showHistory && (
                             <div className="flex flex-col gap-6 mb-6">
-                                <div className="bg-white p-4 rounded-lg shadow border">
-                                    <HistoryChart historyData={history} />
-                                </div>
                                 <HistoryTable
                                     historyData={history}
                                     selectedDate={selectedDate}
