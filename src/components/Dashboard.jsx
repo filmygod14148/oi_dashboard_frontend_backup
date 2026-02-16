@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SnapshotTable from './SnapshotTable';
 import HistoryTable from './HistoryTable';
+import HistoryChart from './HistoryChart';
 
 const Dashboard = () => {
     const [symbol, setSymbol] = useState('NIFTY');
@@ -25,6 +26,7 @@ const Dashboard = () => {
     const [timeFilter, setTimeFilter] = useState('all'); // Default: All Time
     const [currentTime, setCurrentTime] = useState(new Date()); // Clock state
     const [showClock, setShowClock] = useState(true); // Toggle clock
+    const [showHistory, setShowHistory] = useState(true); // Toggle OI history
 
 
     const fetchData = async (isBackground = false, forceFullFetch = false) => {
@@ -228,6 +230,16 @@ const Dashboard = () => {
                         Clock
                     </label>
 
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none bg-white px-3 py-2 rounded border shadow-sm hover:bg-gray-50">
+                        <input
+                            type="checkbox"
+                            checked={showHistory}
+                            onChange={(e) => setShowHistory(e.target.checked)}
+                            className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        OI History
+                    </label>
+
                     <select
                         value={symbol}
                         onChange={(e) => setSymbol(e.target.value)}
@@ -323,14 +335,19 @@ const Dashboard = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="mb-6">
-                            <HistoryTable
-                                historyData={history}
-                                selectedDate={selectedDate}
-                                timeFilter={timeFilter}
-                                strikeCount={strikeCount}
-                            />
-                        </div>
+                        {showHistory && (
+                            <div className="flex flex-col gap-6 mb-6">
+                                <div className="bg-white p-4 rounded-lg shadow border">
+                                    <HistoryChart historyData={history} />
+                                </div>
+                                <HistoryTable
+                                    historyData={history}
+                                    selectedDate={selectedDate}
+                                    timeFilter={timeFilter}
+                                    strikeCount={strikeCount}
+                                />
+                            </div>
+                        )}
                         <div className="overflow-x-auto">
                             <SnapshotTable historyData={history} selectedDate={selectedDate} timeFilter={timeFilter} strikeCount={strikeCount} />
                         </div>
